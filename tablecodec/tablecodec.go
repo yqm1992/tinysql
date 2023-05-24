@@ -38,7 +38,7 @@ var (
 
 const (
 	idLen     = 8
-	prefixLen = 1 + idLen /*tableID*/ + 2
+	prefixLen = 1 + idLen /*tableID*/ + 2 // t${table_id}_r
 	// RecordRowKeyLen is public for calculating average row size.
 	RecordRowKeyLen       = prefixLen + idLen /*handle*/
 	tablePrefixLength     = 1
@@ -98,6 +98,41 @@ func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	 *   5. understanding the coding rules is a prerequisite for implementing this function,
 	 *      you can learn it in the projection 1-2 course documentation.
 	 */
+
+	// t${table_id}_r${row_id}
+	tableID = 0
+	handle = 0
+
+	k := key
+	// 1、parse table id
+	if len(key) != RecordRowKeyLen {
+		err = errInvalidKey.GenWithStack("invalid record key - %q", k)
+		return
+	}
+	if !key.HasPrefix(tablePrefix) {
+		err = errInvalidKey.GenWithStack("invalid record key - %q", k)
+		return
+	}
+
+	key = key[len(tablePrefix):]
+	key, tableID, err = codec.DecodeInt(key)
+	if err != nil {
+		err = errors.Trace(err)
+		return
+	}
+	// 2、parse handle (row id)
+	if !key.HasPrefix(recordPrefixSep) {
+		err = errInvalidKey.GenWithStack("invalid key - %q", k)
+		return
+	}
+
+	key = key[len(recordPrefixSep):]
+
+	key, handle, err = codec.DecodeInt(key)
+	if err != nil {
+		err = errors.Trace(err)
+		return
+	}
 	return
 }
 
@@ -148,6 +183,44 @@ func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues
 	 *   5. understanding the coding rules is a prerequisite for implementing this function,
 	 *      you can learn it in the projection 1-2 course documentation.
 	 */
+
+	// 唯一索引：t${table_id}_i${index_id}_${index_value}
+	// 非唯一索引：t${table_id}_i${index_id}_${index_value}_${row_id}
+	// tablePrefix_tableID_indexPrefixSep_indexID_indexColumnsValue
+	tableID = 0
+	indexID = 0
+
+	k := key
+	// 1、 parse table id
+	if !key.HasPrefix(tablePrefix) {
+		err = errInvalidKey.GenWithStack("invalid index key, table prefix is not found - %q", k)
+		return
+	}
+
+	key = key[len(tablePrefix):]
+	key, tableID, err = codec.DecodeInt(key)
+	if err != nil {
+		err = errors.Trace(err)
+		//err = errInvalidKey.GenWithStack("invalid table id - %q", k)
+		return
+	}
+	// 2、parse index id
+	if !key.HasPrefix(indexPrefixSep) {
+		err = errInvalidKey.GenWithStack("invalid index key, index prefix is not found - %q", k)
+		return
+	}
+
+	key = key[len(indexPrefixSep):]
+
+	// Decode 之后，key会减掉已经解析成int的那部分
+	key, indexID, err = codec.DecodeInt(key)
+	if err != nil {
+		err = errors.Trace(err)
+		//err = errInvalidKey.GenWithStack("invalid index id - %q", key)
+		return
+	}
+	// 3、parse index value
+	indexValues = key
 	return tableID, indexID, indexValues, nil
 }
 
