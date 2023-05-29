@@ -3819,6 +3819,12 @@ JoinTable:
          * }
          *
 	 */
+	 /* TODO: modify */
+	 /* copy from https://www.zhihu.com/column/c_1532515031673962496 */
+	 | TableRef JoinType OuterOpt "JOIN" TableRef "ON" Expression
+	 {
+	    $$ = &ast.Join{Left: $1.(ast.ResultSetNode), Right: $5.(ast.ResultSetNode), Tp: $2.(ast.JoinType), On: &ast.OnCondition{Expr: $7}}
+	 }
 
 JoinType:
 	"LEFT"
